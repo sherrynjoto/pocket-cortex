@@ -1,9 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional
 import json, os
-from datetime import datetime
 
 app = FastAPI()
 
@@ -26,35 +23,18 @@ def save_trades(trades):
     with open(DB_FILE, "w") as f:
         json.dump(trades, f)
 
-class Trade(BaseModel):
-    symbol: str
-    direction: str
-    open_time: str
-    close_time: str
-    entry: float
-    exit: float
-    lots: float
-    pnl: float
-
 @app.get("/")
 def root():
     return {"status": "Trading Journal API is running"}
 
 @app.post("/trade")
-def add_trade(trade: Trade):
+def add_trade(trade: dict):
     trades = load_trades()
-    trade_dict = trade.dict()
-    trade_dict["date"] = trade.open_time[:10]
-    trade_dict["id"] = len(trades) + 1
-    trades.append(trade_dict)
+    trade["id"] = len(trades) + 1
+    trades.append(trade)
     save_trades(trades)
-    return {"message": "Trade saved", "id": trade_dict["id"]}
+    return {"message": "Trade saved", "id": trade["id"]}
 
 @app.get("/trades")
 def get_trades():
     return load_trades()
-
-@app.delete("/trades")
-def clear_trades():
-    save_trades([])
-    return {"message": "All trades cleared"}
