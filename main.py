@@ -31,7 +31,8 @@ def root():
 def debug():
     return {
         "supabase_url": os.environ.get("SUPABASE_URL", "NOT FOUND"),
-        "key_length": len(os.environ.get("SUPABASE_KEY", ""))
+        "key_length": len(os.environ.get("SUPABASE_KEY", "")),
+        "test_key": os.environ.get("TEST_KEY", "NOT FOUND")
     }
 
 @app.post("/trade")
