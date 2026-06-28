@@ -15,7 +15,7 @@ app.add_middleware(
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-def headers():
+def get_headers():
     return {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -25,13 +25,14 @@ def headers():
 
 @app.get("/")
 def root():
-    @app.get("/debug")
+    return {"status": "Trading Journal API is running"}
+
+@app.get("/debug")
 def debug():
     return {
         "supabase_url": os.environ.get("SUPABASE_URL", "NOT FOUND"),
-        "supabase_key_length": len(os.environ.get("SUPABASE_KEY", "")) 
+        "key_length": len(os.environ.get("SUPABASE_KEY", ""))
     }
-    return {"status": "Trading Journal API is running"}
 
 @app.post("/trade")
 async def add_trade(request: Request):
@@ -41,7 +42,7 @@ async def add_trade(request: Request):
         async with httpx.AsyncClient() as client:
             res = await client.post(
                 f"{SUPABASE_URL}/rest/v1/trades",
-                headers=headers(),
+                headers=get_headers(),
                 json=trade
             )
         return {"message": "Trade saved", "data": res.json()}
@@ -54,7 +55,7 @@ async def get_trades():
         async with httpx.AsyncClient() as client:
             res = await client.get(
                 f"{SUPABASE_URL}/rest/v1/trades?order=open_time.asc&limit=10000",
-                headers=headers()
+                headers=get_headers()
             )
         return res.json()
     except Exception as e:
@@ -66,7 +67,7 @@ async def clear_trades():
         async with httpx.AsyncClient() as client:
             await client.delete(
                 f"{SUPABASE_URL}/rest/v1/trades?id=gte.0",
-                headers=headers()
+                headers=get_headers()
             )
         return {"message": "Cleared"}
     except Exception as e:
