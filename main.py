@@ -13,7 +13,7 @@ app.add_middleware(
 )
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+SUPABASE_KEY = "PASTE_YOUR_ANON_KEY_HERE"
 
 def get_headers():
     return {
