@@ -3,8 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Journal</title>
+<title>Pocket Cortex</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230a0a0a'/%3E%3Ccircle cx='50' cy='50' r='30' fill='none' stroke='%231D9E75' stroke-width='9'/%3E%3Ccircle cx='50' cy='50' r='10' fill='%231D9E75'/%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0a;color:#e8e8e8;min-height:100vh}
@@ -150,13 +153,84 @@ input:focus,select:focus{border-color:#1D9E75}
 .form-msg{margin-top:10px;font-size:12px;text-align:center;padding:8px;border-radius:6px}
 .form-msg.success{background:rgba(29,158,117,.1);color:#1D9E75}
 .form-msg.error{background:rgba(239,68,68,.1);color:#ef4444}
+
+/* ── Responsive: tablet ── */
+@media (max-width: 900px) {
+  .stats-grid{grid-template-columns:repeat(3,1fr)}
+  .acct-row{grid-template-columns:repeat(2,1fr)}
+  .perf-grid{grid-template-columns:repeat(2,1fr)}
+  .detail-panel{width:280px}
+}
+
+/* ── Responsive: mobile ── */
+@media (max-width: 720px) {
+  .topnav{padding:12px 16px}
+  .logo{font-size:16px}
+  .subtitle{display:none}
+  .pdf-btn{padding:8px 10px;font-size:11px}
+  .status-badge{font-size:10px;padding:3px 9px}
+
+  .layout{flex-direction:column;min-height:calc(100vh - 57px)}
+
+  /* sidebar becomes a fixed bottom tab bar */
+  .sidebar{
+    position:fixed;bottom:0;left:0;right:0;width:100%;z-index:95;
+    flex-direction:row;justify-content:space-around;align-items:stretch;
+    padding:4px 0;border-right:none;border-top:1px solid #1a1a1a;
+    background:#0a0a0a;
+  }
+  .nav-item{
+    flex:1;flex-direction:column;justify-content:center;align-items:center;
+    gap:3px;padding:8px 4px;font-size:10px;text-align:center;
+    border-left:none;border-top:2px solid transparent;
+  }
+  .nav-item.active{border-left:none;border-top-color:#1D9E75}
+
+  .page{padding:16px 14px 92px}
+
+  .stats-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+  .stat-card{padding:12px}
+  .stat-val{font-size:18px}
+  .acct-row{grid-template-columns:repeat(2,1fr);gap:8px}
+  .perf-grid{grid-template-columns:1fr;gap:10px}
+
+  .chart-wrap{height:160px}
+  .card-header{flex-wrap:wrap;gap:8px}
+  .tab-row{flex-wrap:wrap}
+
+  /* calendar: drop the week-total column, shrink cells */
+  .cal-grid{grid-template-columns:repeat(7,1fr)}
+  .cal-grid > *:nth-child(8n){display:none}
+  .cal-day{padding:4px 2px;min-height:50px}
+  .cal-dow{font-size:8px;padding:4px 1px}
+  .day-num,.today-badge{font-size:9px}
+  .today-badge{width:16px;height:16px}
+  .day-pnl{font-size:9px}
+  .day-count{font-size:7px}
+
+  /* detail panel becomes a full-screen overlay */
+  .detail-panel{
+    position:fixed;inset:0;top:57px;width:100%;
+    max-height:calc(100vh - 57px);z-index:90;
+    padding:18px 16px 100px;
+  }
+
+  .modal{padding:18px;width:94vw}
+  .form-row{grid-template-columns:1fr 1fr;gap:8px}
+  .payout-item{padding:12px 14px}
+}
+
+@media (max-width: 400px) {
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .form-row{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
 
 <div class="topnav">
   <div>
-    <div class="logo">Trading <span>Journal</span></div>
+    <div class="logo">Pocket <span>Cortex</span></div>
     <div class="subtitle">Personal Trading Tracker</div>
   </div>
   <div class="topnav-right">
@@ -305,7 +379,7 @@ input:focus,select:focus{border-color:#1D9E75}
 </div>
 
 <script>
-const API = 'https://trading-journal-b56r.onrender.com';
+const API = 'https://pocket-cortex.onrender.com';
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DOWS = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
 
@@ -629,127 +703,121 @@ function showPage(id, el) {
 }
 
 // ── PDF ───────────────────────────────────────────────────────
-function downloadPDF() {
+async function downloadPDF() {
   const btn = document.getElementById('pdfBtn');
+  const originalLabel = btn.innerHTML;
   btn.textContent = 'Generating...'; btn.disabled = true;
 
-  const tr = trades();
-  const dep = totalDeposit(), wit = totalWithdrawal(), pnl = totalTradePnl(), bal = currentBalance();
-  const wins = tr.filter(t=>parseFloat(t.pnl)>0);
-  const wr = tr.length ? ((wins.length/tr.length)*100).toFixed(1) : 0;
-  const dayMap = getDayMap();
-  const pts = getEquityPoints();
-  const now = new Date();
+  try {
+    const tr = trades();
+    const dep = totalDeposit(), wit = totalWithdrawal(), pnl = totalTradePnl(), bal = currentBalance();
+    const wins = tr.filter(t=>parseFloat(t.pnl)>0);
+    const wr = tr.length ? ((wins.length/tr.length)*100).toFixed(1) : 0;
+    const dayMap = getDayMap();
+    const pts = getEquityPoints();
+    const now = new Date();
+    const today = now.toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+    const gc = v => parseFloat(v)>=0?'#1D9E75':'#ef4444';
 
-  const monCut = new Date(now); monCut.setMonth(now.getMonth()-1);
-  const dailyPts   = pts.slice(-7);
-  const monthlyPts = pts.filter(p=>new Date(p.d)>=monCut);
-  const ytdPts     = pts.filter(p=>p.d.startsWith(now.getFullYear()+''));
-
-  const eqD = dailyPts.length>=2?(dailyPts[dailyPts.length-1].bal-dailyPts[0].bal).toFixed(2):'0.00';
-  const eqM = monthlyPts.length>=2?(monthlyPts[monthlyPts.length-1].bal-monthlyPts[0].bal).toFixed(2):'0.00';
-  const eqY = ytdPts.length>=2?(ytdPts[ytdPts.length-1].bal-ytdPts[0].bal).toFixed(2):pnl.toFixed(2);
-  const today = now.toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
-  const gc = v => parseFloat(v)>=0?'#1D9E75':'#ef4444';
-
-  const mkDataset = (pts, color) => JSON.stringify({
-    labels: pts.map(x=>{const d=new Date(x.d);return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}),
-    data: pts.map(x=>x.bal),
-    color
-  });
-
-  const dD = mkDataset(dailyPts, gc(eqD));
-  const dM = mkDataset(monthlyPts, gc(eqM));
-  const dY = mkDataset(ytdPts, gc(eqY));
-
-  const html = `<!DOCTYPE html><html><head><title>Trading Journal Report</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"><\/script>
-  <style>*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,sans-serif}
-  body{padding:36px;color:#111;max-width:860px;margin:0 auto}
-  h1{font-size:22px;font-weight:700}h1 span{color:#1D9E75}
-  .sub{color:#999;font-size:12px;margin-top:4px;margin-bottom:24px}
-  .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
-  .card{border:1px solid #eee;border-radius:10px;padding:14px}
-  .cl{font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
-  .cv{font-size:18px;font-weight:700}.pos{color:#1D9E75}.neg{color:#ef4444}
-  .stitle{font-size:13px;font-weight:600;color:#111;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #f0f0f0}
-  .chart-block{margin-bottom:28px}
-  .chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-  .chart-label{font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em}
-  .chart-change{font-size:17px;font-weight:700}
-  .chart-wrap{height:180px;position:relative;border:1px solid #f0f0f0;border-radius:8px;padding:8px}
-  .ft{margin-top:28px;text-align:center;font-size:11px;color:#ccc;border-top:1px solid #eee;padding-top:14px}
-  </style></head><body>
-  <h1>Trading <span>Journal<\/span><\/h1>
-  <div class="sub">Personal Trading Tracker &middot; Report generated ${today}<\/div>
-
-  <div class="stitle">Account Summary<\/div>
-  <div class="g4" style="margin-bottom:28px">
-    <div class="card"><div class="cl">Balance<\/div><div class="cv ${bal>=0?'pos':'neg'}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}<\/div><\/div>
-    <div class="card"><div class="cl">Realized P&amp;L<\/div><div class="cv ${pnl>=0?'pos':'neg'}">${pnl>=0?'+':'-'}$${Math.abs(pnl).toFixed(2)}<\/div><\/div>
-    <div class="card"><div class="cl">Win Rate<\/div><div class="cv ${parseFloat(wr)>=50?'pos':'neg'}">${wr}%<\/div><\/div>
-    <div class="card"><div class="cl">Total Trades<\/div><div class="cv">${tr.length}<\/div><\/div>
-    <div class="card"><div class="cl">Trading Days<\/div><div class="cv">${Object.keys(dayMap).length}<\/div><\/div>
-    <div class="card"><div class="cl">Total Deposited<\/div><div class="cv pos">$${dep.toFixed(2)}<\/div><\/div>
-    <div class="card"><div class="cl">Total Withdrawn<\/div><div class="cv">$${Math.abs(wit).toFixed(2)}<\/div><\/div>
-    <div class="card"><div class="cl">Net Result<\/div><div class="cv ${bal>=0?'pos':'neg'}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}<\/div><\/div>
-  <\/div>
-
-  <div class="stitle">Equity Growth<\/div>
-
-  <div class="chart-block">
-    <div class="chart-header">
-      <div class="chart-label">Daily (Last 7 Days)<\/div>
-      <div class="chart-change" style="color:${gc(eqD)}">${parseFloat(eqD)>=0?'+':'-'}$${Math.abs(parseFloat(eqD)).toFixed(2)}<\/div>
-    <\/div>
-    <div class="chart-wrap"><canvas id="cD"><\/canvas><\/div>
-  <\/div>
-
-  <div class="chart-block">
-    <div class="chart-header">
-      <div class="chart-label">Monthly (Last 30 Days)<\/div>
-      <div class="chart-change" style="color:${gc(eqM)}">${parseFloat(eqM)>=0?'+':'-'}$${Math.abs(parseFloat(eqM)).toFixed(2)}<\/div>
-    <\/div>
-    <div class="chart-wrap"><canvas id="cM"><\/canvas><\/div>
-  <\/div>
-
-  <div class="chart-block">
-    <div class="chart-header">
-      <div class="chart-label">Year to Date (YTD)<\/div>
-      <div class="chart-change" style="color:${gc(eqY)}">${parseFloat(eqY)>=0?'+':'-'}$${Math.abs(parseFloat(eqY)).toFixed(2)}<\/div>
-    <\/div>
-    <div class="chart-wrap"><canvas id="cY"><\/canvas><\/div>
-  <\/div>
-
-  <div class="ft">Trading Journal &middot; Personal Trading Tracker &middot; ${today}<\/div>
-
-  <script>
-  function mkChart(id, dataset) {
-    const d = JSON.parse(dataset);
-    new Chart(document.getElementById(id).getContext('2d'), {
-      type:'line',
-      data:{labels:d.labels,datasets:[{data:d.data,borderColor:d.color,borderWidth:2,
-        pointRadius:d.data.length>20?0:3,fill:true,
-        backgroundColor:d.color==='#1D9E75'?'rgba(29,158,117,.08)':'rgba(239,68,68,.08)',tension:.3}]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
-        tooltip:{callbacks:{label:c=>'$'+c.parsed.y.toLocaleString('en-US',{minimumFractionDigits:2})}}},
-        scales:{x:{ticks:{font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{color:'#f5f5f5'}},
-          y:{ticks:{font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:'#f5f5f5'}}}}
+    // Reuse the same filterRange() logic the live dashboard uses,
+    // so the PDF always matches what's on screen.
+    const sections = [
+      {label:'Daily',   range:'1D'},
+      {label:'Weekly',  range:'1W'},
+      {label:'Monthly', range:'1M'},
+      {label:'Year to Date (YTD)', range:'YTD'}
+    ].map(s => {
+      const p = filterRange(pts, s.range);
+      const change = p.length>=2 ? (p[p.length-1].bal-p[0].bal) : (p.length===1?p[0].bal:0);
+      return {...s, pts:p, change};
     });
-  }
-  mkChart('cD', '${dD.replace(/'/g,"\\'")}');
-  mkChart('cM', '${dM.replace(/'/g,"\\'")}');
-  mkChart('cY', '${dY.replace(/'/g,"\\'")}');
-  <\/script>
-  <\/body><\/html>`;
 
-  const blob = new Blob([html], {type:'text/html'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `trading-journal-${now.toISOString().slice(0,10)}.html`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  btn.textContent = '⬇ Download PDF'; btn.disabled = false;
+    // Build an offscreen report container (fixed width so charts render consistently)
+    const report = document.createElement('div');
+    report.style.cssText = 'position:fixed;left:-9999px;top:0;width:820px;background:#fff;color:#111;padding:36px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
+    report.innerHTML = `
+      <h1 style="font-size:22px;font-weight:700;margin:0">Pocket <span style="color:#1D9E75">Cortex</span></h1>
+      <div style="color:#999;font-size:12px;margin:4px 0 24px">Automated Trading Journal &middot; Report generated ${today}</div>
+
+      <div style="font-size:13px;font-weight:600;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #f0f0f0">Account Summary</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
+        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Balance</div><div style="font-size:18px;font-weight:700;color:${gc(bal)}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}</div></div>
+        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Realized P&amp;L</div><div style="font-size:18px;font-weight:700;color:${gc(pnl)}">${pnl>=0?'+':'-'}$${Math.abs(pnl).toFixed(2)}</div></div>
+        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Win Rate</div><div style="font-size:18px;font-weight:700;color:${parseFloat(wr)>=50?'#1D9E75':'#ef4444'}">${wr}%</div></div>
+        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total Trades</div><div style="font-size:18px;font-weight:700">${tr.length}</div></div>
+        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Trading Days</div><div style="font-size:18px;font-weight:700">${Object.keys(dayMap).length}</div></div>
+        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total Deposited</div><div style="font-size:18px;font-weight:700;color:#1D9E75">$${dep.toFixed(2)}</div></div>
+        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total Withdrawn</div><div style="font-size:18px;font-weight:700">$${Math.abs(wit).toFixed(2)}</div></div>
+        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Net Result</div><div style="font-size:18px;font-weight:700;color:${gc(bal)}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}</div></div>
+      </div>
+
+      <div style="font-size:13px;font-weight:600;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #f0f0f0">Equity Growth</div>
+      ${sections.map((s,i) => `
+        <div style="margin-bottom:28px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em">${s.label}</div>
+            <div style="font-size:17px;font-weight:700;color:${gc(s.change)}">${s.change>=0?'+':'-'}$${Math.abs(s.change).toFixed(2)}</div>
+          </div>
+          <div style="height:180px;border:1px solid #f0f0f0;border-radius:8px;padding:8px">
+            ${s.pts.length ? `<canvas id="pdfChart${i}"></canvas>` : `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:12px">No data for this period</div>`}
+          </div>
+        </div>`).join('')}
+
+      <div style="margin-top:28px;text-align:center;font-size:11px;color:#ccc;border-top:1px solid #eee;padding-top:14px">Pocket Cortex &middot; Automated Trading Journal &middot; ${today}</div>
+    `;
+    document.body.appendChild(report);
+
+    // Render each chart with animation off so it's fully painted before capture
+    const pdfCharts = [];
+    sections.forEach((s,i) => {
+      if(!s.pts.length) return;
+      const canvas = report.querySelector(`#pdfChart${i}`);
+      const color = gc(s.change);
+      pdfCharts.push(new Chart(canvas.getContext('2d'), {
+        type:'line',
+        data:{labels:s.pts.map(x=>{const d=new Date(x.d);return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}),
+          datasets:[{data:s.pts.map(x=>x.bal),borderColor:color,borderWidth:2,
+            pointRadius:s.pts.length>20?0:3,fill:true,
+            backgroundColor:color==='#1D9E75'?'rgba(29,158,117,.08)':'rgba(239,68,68,.08)',tension:.3}]},
+        options:{responsive:false,animation:false,plugins:{legend:{display:false}},
+          scales:{x:{ticks:{font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{color:'#f5f5f5'}},
+            y:{ticks:{font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:'#f5f5f5'}}}}
+      }));
+    });
+
+    // Give the browser a couple of frames to finish painting the canvases
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const canvasImg = await html2canvas(report, {backgroundColor:'#ffffff', scale:2, useCORS:true});
+
+    pdfCharts.forEach(c => c.destroy());
+    document.body.removeChild(report);
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'pt', 'a4');
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const imgW = pageW;
+    const imgH = (canvasImg.height * imgW) / canvasImg.width;
+    const imgData = canvasImg.toDataURL('image/png');
+
+    let heightLeft = imgH, position = 0;
+    pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+    heightLeft -= pageH;
+    while (heightLeft > 0) {
+      position = heightLeft - imgH;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+      heightLeft -= pageH;
+    }
+
+    pdf.save(`pocket-cortex-report-${now.toISOString().slice(0,10)}.pdf`);
+  } catch(e) {
+    console.error(e);
+    alert('Failed to generate PDF. Please try again.');
+  }
+
+  btn.innerHTML = originalLabel; btn.disabled = false;
 }
 
 // ── MODAL ─────────────────────────────────────────────────────
