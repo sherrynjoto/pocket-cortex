@@ -719,99 +719,153 @@ async function downloadPDF() {
     const today = now.toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
     const gc = v => parseFloat(v)>=0?'#1D9E75':'#ef4444';
 
-    // Reuse the same filterRange() logic the live dashboard uses,
-    // so the PDF always matches what's on screen.
+    // For periods with no trades, show last known balance as a flat line
+    // so the chart is still meaningful instead of showing $0
+    const lastPt = pts.length ? pts[pts.length-1] : null;
+    function getPeriodPts(range) {
+      const p = filterRange(pts, range);
+      if (p.length > 0) return { pts: p, noRecent: false };
+      // No trades in range — show last known balance as reference
+      if (lastPt) return { pts: [lastPt, lastPt], noRecent: true };
+      return { pts: [], noRecent: false };
+    }
+
     const sections = [
-      {label:'Daily',   range:'1D'},
-      {label:'Weekly',  range:'1W'},
-      {label:'Monthly', range:'1M'},
-      {label:'Year to Date (YTD)', range:'YTD'}
+      {label:'Daily (Last 2 Trading Days)', range:'1D'},
+      {label:'Weekly (Last 7 Days)',        range:'1W'},
+      {label:'Monthly (Last 30 Days)',      range:'1M'},
+      {label:'Year to Date (YTD)',          range:'YTD'}
     ].map(s => {
-      const p = filterRange(pts, s.range);
-      const change = p.length>=2 ? (p[p.length-1].bal-p[0].bal) : (p.length===1?p[0].bal:0);
-      return {...s, pts:p, change};
+      const { pts: p, noRecent } = getPeriodPts(s.range);
+      const change = noRecent ? 0 : (p.length>=2 ? (p[p.length-1].bal-p[0].bal) : 0);
+      return {...s, pts: p, change, noRecent};
     });
-
-    // Build an offscreen report container (fixed width so charts render consistently)
-    const report = document.createElement('div');
-    report.style.cssText = 'position:fixed;left:-9999px;top:0;width:820px;background:#fff;color:#111;padding:36px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
-    report.innerHTML = `
-      <h1 style="font-size:22px;font-weight:700;margin:0">Pocket <span style="color:#1D9E75">Cortex</span></h1>
-      <div style="color:#999;font-size:12px;margin:4px 0 24px">Automated Trading Journal &middot; Report generated ${today}</div>
-
-      <div style="font-size:13px;font-weight:600;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #f0f0f0">Account Summary</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
-        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Balance</div><div style="font-size:18px;font-weight:700;color:${gc(bal)}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}</div></div>
-        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Realized P&amp;L</div><div style="font-size:18px;font-weight:700;color:${gc(pnl)}">${pnl>=0?'+':'-'}$${Math.abs(pnl).toFixed(2)}</div></div>
-        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Win Rate</div><div style="font-size:18px;font-weight:700;color:${parseFloat(wr)>=50?'#1D9E75':'#ef4444'}">${wr}%</div></div>
-        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total Trades</div><div style="font-size:18px;font-weight:700">${tr.length}</div></div>
-        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Trading Days</div><div style="font-size:18px;font-weight:700">${Object.keys(dayMap).length}</div></div>
-        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total Deposited</div><div style="font-size:18px;font-weight:700;color:#1D9E75">$${dep.toFixed(2)}</div></div>
-        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Total Withdrawn</div><div style="font-size:18px;font-weight:700">$${Math.abs(wit).toFixed(2)}</div></div>
-        <div style="border:1px solid #eee;border-radius:10px;padding:14px"><div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Net Result</div><div style="font-size:18px;font-weight:700;color:${gc(bal)}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}</div></div>
-      </div>
-
-      <div style="font-size:13px;font-weight:600;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #f0f0f0">Equity Growth</div>
-      ${sections.map((s,i) => `
-        <div style="margin-bottom:28px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em">${s.label}</div>
-            <div style="font-size:17px;font-weight:700;color:${gc(s.change)}">${s.change>=0?'+':'-'}$${Math.abs(s.change).toFixed(2)}</div>
-          </div>
-          <div style="height:180px;border:1px solid #f0f0f0;border-radius:8px;padding:8px">
-            ${s.pts.length ? `<canvas id="pdfChart${i}"></canvas>` : `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:12px">No data for this period</div>`}
-          </div>
-        </div>`).join('')}
-
-      <div style="margin-top:28px;text-align:center;font-size:11px;color:#ccc;border-top:1px solid #eee;padding-top:14px">Pocket Cortex &middot; Automated Trading Journal &middot; ${today}</div>
-    `;
-    document.body.appendChild(report);
-
-    // Render each chart with animation off so it's fully painted before capture
-    const pdfCharts = [];
-    sections.forEach((s,i) => {
-      if(!s.pts.length) return;
-      const canvas = report.querySelector(`#pdfChart${i}`);
-      const color = gc(s.change);
-      pdfCharts.push(new Chart(canvas.getContext('2d'), {
-        type:'line',
-        data:{labels:s.pts.map(x=>{const d=new Date(x.d);return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}),
-          datasets:[{data:s.pts.map(x=>x.bal),borderColor:color,borderWidth:2,
-            pointRadius:s.pts.length>20?0:3,fill:true,
-            backgroundColor:color==='#1D9E75'?'rgba(29,158,117,.08)':'rgba(239,68,68,.08)',tension:.3}]},
-        options:{responsive:false,animation:false,plugins:{legend:{display:false}},
-          scales:{x:{ticks:{font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{color:'#f5f5f5'}},
-            y:{ticks:{font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:'#f5f5f5'}}}}
-      }));
-    });
-
-    // Give the browser a couple of frames to finish painting the canvases
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-    const canvasImg = await html2canvas(report, {backgroundColor:'#ffffff', scale:2, useCORS:true});
-
-    pdfCharts.forEach(c => c.destroy());
-    document.body.removeChild(report);
 
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF('p', 'pt', 'a4');
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    const imgW = pageW;
-    const imgH = (canvasImg.height * imgW) / canvasImg.width;
-    const imgData = canvasImg.toDataURL('image/png');
+    const margin = 36;
 
-    let heightLeft = imgH, position = 0;
-    pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
-    heightLeft -= pageH;
-    while (heightLeft > 0) {
-      position = heightLeft - imgH;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
-      heightLeft -= pageH;
+    // ── Page 1: Header + Account Summary ──────────────────────
+    const summaryEl = document.createElement('div');
+    summaryEl.style.cssText = `position:fixed;left:-9999px;top:0;width:${pageW - margin*2}px;background:#fff;color:#111;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;`;
+    summaryEl.innerHTML = `
+      <h1 style="font-size:22px;font-weight:700;margin:0 0 4px">Pocket <span style="color:#1D9E75">Cortex</span></h1>
+      <div style="color:#999;font-size:12px;margin-bottom:24px">Automated Trading Journal &middot; ${today}</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #f0f0f0">Account Summary</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+        <div style="border:1px solid #eee;border-radius:8px;padding:12px"><div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Balance</div><div style="font-size:16px;font-weight:700;color:${gc(bal)}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}</div></div>
+        <div style="border:1px solid #eee;border-radius:8px;padding:12px"><div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Realized P&amp;L</div><div style="font-size:16px;font-weight:700;color:${gc(pnl)}">${pnl>=0?'+':'-'}$${Math.abs(pnl).toFixed(2)}</div></div>
+        <div style="border:1px solid #eee;border-radius:8px;padding:12px"><div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Win Rate</div><div style="font-size:16px;font-weight:700;color:${parseFloat(wr)>=50?'#1D9E75':'#ef4444'}">${wr}%</div></div>
+        <div style="border:1px solid #eee;border-radius:8px;padding:12px"><div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Total Trades</div><div style="font-size:16px;font-weight:700">${tr.length}</div></div>
+        <div style="border:1px solid #eee;border-radius:8px;padding:12px"><div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Trading Days</div><div style="font-size:16px;font-weight:700">${Object.keys(dayMap).length}</div></div>
+        <div style="border:1px solid #eee;border-radius:8px;padding:12px"><div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Total Deposited</div><div style="font-size:16px;font-weight:700;color:#1D9E75">$${dep.toFixed(2)}</div></div>
+        <div style="border:1px solid #eee;border-radius:8px;padding:12px"><div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Total Withdrawn</div><div style="font-size:16px;font-weight:700">$${Math.abs(wit).toFixed(2)}</div></div>
+        <div style="border:1px solid #eee;border-radius:8px;padding:12px"><div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Net Result</div><div style="font-size:16px;font-weight:700;color:${gc(bal)}">${bal>=0?'+':'-'}$${Math.abs(bal).toFixed(2)}</div></div>
+      </div>
+    `;
+    document.body.appendChild(summaryEl);
+    const summaryCanvas = await html2canvas(summaryEl, {backgroundColor:'#ffffff', scale:2, useCORS:true});
+    document.body.removeChild(summaryEl);
+
+    const summaryH = (summaryCanvas.height * (pageW - margin*2)) / summaryCanvas.width;
+    pdf.addImage(summaryCanvas.toDataURL('image/png'), 'PNG', margin, margin, pageW - margin*2, summaryH);
+
+    // ── Charts: each rendered separately, add new page if needed ──
+    let curY = margin + summaryH + 24;
+    const sectionTitleH = 32;
+    const chartH = 160;
+    const sectionTotalH = sectionTitleH + chartH + 20; // title + chart + gap
+
+    // Section header "Equity Growth"
+    const eqTitleEl = document.createElement('div');
+    eqTitleEl.style.cssText = `position:fixed;left:-9999px;top:0;width:${pageW - margin*2}px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;`;
+    eqTitleEl.innerHTML = `<div style="font-size:13px;font-weight:600;color:#111;padding-bottom:8px;border-bottom:2px solid #f0f0f0">Equity Growth</div>`;
+    document.body.appendChild(eqTitleEl);
+    const eqTitleCanvas = await html2canvas(eqTitleEl, {backgroundColor:'#ffffff', scale:2});
+    document.body.removeChild(eqTitleEl);
+    const eqTitleH = (eqTitleCanvas.height * (pageW - margin*2)) / eqTitleCanvas.width;
+
+    if (curY + eqTitleH > pageH - margin) { pdf.addPage(); curY = margin; }
+    pdf.addImage(eqTitleCanvas.toDataURL('image/png'), 'PNG', margin, curY, pageW - margin*2, eqTitleH);
+    curY += eqTitleH + 12;
+
+    for (const s of sections) {
+      // Check if this section fits on current page
+      if (curY + sectionTotalH > pageH - margin) {
+        pdf.addPage();
+        curY = margin;
+      }
+
+      // Render this section's header + chart as one element
+      const secEl = document.createElement('div');
+      secEl.style.cssText = `position:fixed;left:-9999px;top:0;width:${pageW - margin*2}px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;`;
+
+      let chartHtml;
+      if (!s.pts.length) {
+        chartHtml = `<div style="height:${chartH}px;border:1px solid #f0f0f0;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:12px">No data available</div>`;
+      } else {
+        chartHtml = `<div style="height:${chartH}px;border:1px solid #f0f0f0;border-radius:8px;padding:8px;box-sizing:border-box"><canvas id="pdfChartEl" width="${pageW - margin*2 - 16}" height="${chartH - 16}"></canvas></div>`;
+      }
+
+      const noRecentNote = s.noRecent ? `<span style="font-size:10px;color:#aaa;margin-left:8px">(no recent trades — showing last known balance)</span>` : '';
+      secEl.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em">${s.label}${noRecentNote}</div>
+          <div style="font-size:15px;font-weight:700;color:${gc(s.change)}">${s.change>=0?'+':'-'}$${Math.abs(s.change).toFixed(2)}</div>
+        </div>
+        ${chartHtml}
+      `;
+      document.body.appendChild(secEl);
+
+      // Render chart into canvas if data exists
+      let tempChart = null;
+      if (s.pts.length) {
+        const canvas = secEl.querySelector('#pdfChartEl');
+        const color = s.noRecent ? '#aaaaaa' : gc(s.change);
+        tempChart = new Chart(canvas.getContext('2d'), {
+          type:'line',
+          data:{
+            labels: s.pts.map(x=>{const d=new Date(x.d);return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}),
+            datasets:[{
+              data: s.pts.map(x=>x.bal),
+              borderColor: color, borderWidth:2,
+              pointRadius: s.pts.length>20?0:3,
+              fill:true,
+              backgroundColor: color==='#1D9E75'?'rgba(29,158,117,.08)':color==='#aaaaaa'?'rgba(170,170,170,.06)':'rgba(239,68,68,.08)',
+              tension:.3
+            }]
+          },
+          options:{
+            responsive:false, animation:false,
+            plugins:{legend:{display:false}},
+            scales:{
+              x:{ticks:{font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:7},grid:{color:'#f5f5f5'}},
+              y:{ticks:{font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:'#f5f5f5'}}
+            }
+          }
+        });
+      }
+
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const secCanvas = await html2canvas(secEl, {backgroundColor:'#ffffff', scale:2, useCORS:true});
+      if (tempChart) tempChart.destroy();
+      document.body.removeChild(secEl);
+
+      const secImgH = (secCanvas.height * (pageW - margin*2)) / secCanvas.width;
+      pdf.addImage(secCanvas.toDataURL('image/png'), 'PNG', margin, curY, pageW - margin*2, secImgH);
+      curY += secImgH + 16;
     }
 
+    // Footer on last page
+    if (curY + 30 > pageH - margin) { pdf.addPage(); curY = margin; }
+    pdf.setFontSize(9);
+    pdf.setTextColor(180,180,180);
+    pdf.text(`Pocket Cortex  ·  Automated Trading Journal  ·  ${today}`, pageW/2, curY + 14, {align:'center'});
+
     pdf.save(`pocket-cortex-report-${now.toISOString().slice(0,10)}.pdf`);
+
   } catch(e) {
     console.error(e);
     alert('Failed to generate PDF. Please try again.');
