@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pocket Cortex</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230a0a0a'/%3E%3Ccircle cx='50' cy='50' r='30' fill='none' stroke='%231D9E75' stroke-width='9'/%3E%3Ccircle cx='50' cy='50' r='10' fill='%231D9E75'/%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -225,8 +226,56 @@ input:focus,select:focus{border-color:#1D9E75}
   .form-row{grid-template-columns:1fr}
 }
 </style>
+
+/* ── Login Page ── */
+.login-wrap{display:none;position:fixed;inset:0;background:#0a0a0a;z-index:500;align-items:center;justify-content:center;flex-direction:column}
+.login-wrap.active{display:flex}
+.login-box{background:#111;border:1px solid #1a1a1a;border-radius:16px;padding:36px;width:min(380px,92vw)}
+.login-logo{font-size:24px;font-weight:700;color:#fff;margin-bottom:6px}.login-logo span{color:#1D9E75}
+.login-sub{font-size:13px;color:#444;margin-bottom:28px}
+.login-title{font-size:16px;font-weight:600;color:#e8e8e8;margin-bottom:20px}
+.login-field{display:flex;flex-direction:column;gap:4px;margin-bottom:14px}
+.login-field label{font-size:10px;color:#444;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.login-field input{background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:10px 12px;font-size:14px;color:#e8e8e8;outline:none;transition:border-color .15s}
+.login-field input:focus{border-color:#1D9E75}
+.login-btn{width:100%;background:#1D9E75;border:none;border-radius:8px;padding:11px;font-size:14px;font-weight:600;color:#fff;cursor:pointer;margin-top:6px;transition:background .15s}
+.login-btn:hover{background:#17856a}
+.login-btn:disabled{opacity:.5;cursor:not-allowed}
+.login-err{font-size:12px;color:#ef4444;text-align:center;margin-top:10px;min-height:18px}
+.login-switch{font-size:12px;color:#444;text-align:center;margin-top:16px}
+.login-switch a{color:#1D9E75;cursor:pointer;text-decoration:none}
+.login-switch a:hover{text-decoration:underline}
+.logout-btn{background:none;border:1px solid #222;border-radius:8px;padding:6px 12px;font-size:12px;color:#555;cursor:pointer}
+.logout-btn:hover{color:#e8e8e8;border-color:#333}
+</style>
 </head>
 <body>
+
+<!-- LOGIN PAGE -->
+<div class="login-wrap active" id="loginWrap">
+  <div class="login-box">
+    <div class="login-logo">Pocket <span>Cortex</span></div>
+    <div class="login-sub">Automated Trading Journal</div>
+    <div class="login-title" id="loginTitle">Sign in to your account</div>
+    <div class="login-field">
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="login-field">
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="login-field" id="loginNameField" style="display:none">
+      <label>Name</label>
+      <input type="text" id="loginName" placeholder="Your name">
+    </div>
+    <button class="login-btn" id="loginBtn" onclick="handleAuth()">Sign In</button>
+    <div class="login-err" id="loginErr"></div>
+    <div class="login-switch" id="loginSwitch">
+      Don't have an account? <a onclick="toggleAuthMode()">Sign up</a>
+    </div>
+  </div>
+</div>
 
 <div class="topnav">
   <div>
@@ -235,6 +284,7 @@ input:focus,select:focus{border-color:#1D9E75}
   </div>
   <div class="topnav-right">
     <span class="status-badge" id="statusBadge">● Connecting...</span>
+    <button class="logout-btn" onclick="handleLogout()">Sign Out</button>
     <button class="pdf-btn" onclick="downloadPDF()" id="pdfBtn">⬇ Download PDF</button>
   </div>
 </div>
@@ -899,9 +949,98 @@ async function submitTrade() {
 }
 function closeModal() { document.getElementById('addModal').classList.remove('open'); }
 
+// ── AUTH ──────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://hirvwvmctmgsjweedonk.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpcnZ3dm1jdG1nc2p3ZWVkb25rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NjA5OTUsImV4cCI6MjA5ODEzNjk5NX0.A406IYAEvpCGgtsBgYigzU3Gpm6GS0B8u1a9NHW7Gpg';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+let authMode = 'signin'; // 'signin' or 'signup'
+let currentSession = null;
+
+function toggleAuthMode() {
+  authMode = authMode === 'signin' ? 'signup' : 'signin';
+  document.getElementById('loginTitle').textContent = authMode === 'signin' ? 'Sign in to your account' : 'Create your account';
+  document.getElementById('loginBtn').textContent = authMode === 'signin' ? 'Sign In' : 'Sign Up';
+  document.getElementById('loginSwitch').innerHTML = authMode === 'signin'
+    ? `Don't have an account? <a onclick="toggleAuthMode()">Sign up</a>`
+    : `Already have an account? <a onclick="toggleAuthMode()">Sign in</a>`;
+  document.getElementById('loginNameField').style.display = authMode === 'signup' ? 'block' : 'none';
+  document.getElementById('loginErr').textContent = '';
+}
+
+async function handleAuth() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  const errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
+
+  if (!email || !password) { errEl.textContent = 'Email and password are required.'; return; }
+
+  btn.disabled = true;
+  btn.textContent = authMode === 'signin' ? 'Signing in...' : 'Creating account...';
+
+  try {
+    let result;
+    if (authMode === 'signup') {
+      const name = document.getElementById('loginName').value.trim();
+      result = await supabase.auth.signUp({ email, password, options: { data: { name } } });
+      if (!result.error && result.data.user) {
+        errEl.style.color = '#1D9E75';
+        errEl.textContent = 'Account created! Check your email to confirm, then sign in.';
+        toggleAuthMode();
+      }
+    } else {
+      result = await supabase.auth.signInWithPassword({ email, password });
+      if (!result.error) {
+        currentSession = result.data.session;
+        showDashboard();
+      }
+    }
+    if (result.error) errEl.textContent = result.error.message;
+  } catch(e) {
+    errEl.textContent = 'Something went wrong. Please try again.';
+  }
+
+  btn.disabled = false;
+  btn.textContent = authMode === 'signin' ? 'Sign In' : 'Sign Up';
+}
+
+async function handleLogout() {
+  await supabase.auth.signOut();
+  currentSession = null;
+  document.getElementById('loginWrap').classList.add('active');
+  document.getElementById('loginEmail').value = '';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginErr').textContent = '';
+  document.getElementById('loginErr').style.color = '#ef4444';
+}
+
+function showDashboard() {
+  document.getElementById('loginWrap').classList.remove('active');
+  loadTrades();
+}
+
+// Allow pressing Enter to submit login
+document.getElementById('loginPassword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleAuth();
+});
+document.getElementById('loginEmail').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleAuth();
+});
+
 // ── INIT ──────────────────────────────────────────────────────
 function renderAll() { renderMetrics(); renderEquity(); renderCal(); }
-loadTrades();
+
+// Check if already logged in (saved session in browser)
+(async () => {
+  const { data } = await supabase.auth.getSession();
+  if (data.session) {
+    currentSession = data.session;
+    showDashboard();
+  }
+  // If no session, login page stays visible (already shown by default)
+})();
 </script>
 </body>
 </html>
