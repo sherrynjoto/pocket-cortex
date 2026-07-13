@@ -951,7 +951,7 @@ function closeModal() { document.getElementById('addModal').classList.remove('op
 // ── AUTH ──────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://hirvwvmctmgsjweedonk.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpcnZ3dm1jdG1nc2p3ZWVkb25rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NjA5OTUsImV4cCI6MjA5ODEzNjk5NX0.A406IYAEvpCGgtsBgYigzU3Gpm6GS0B8u1a9NHW7Gpg';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 let authMode = 'signin'; // 'signin' or 'signup'
 let currentSession = null;
@@ -983,14 +983,14 @@ async function handleAuth() {
     let result;
     if (authMode === 'signup') {
       const name = document.getElementById('loginName').value.trim();
-      result = await supabase.auth.signUp({ email, password, options: { data: { name } } });
+      result = await sb.auth.signUp({ email, password, options: { data: { name } } });
       if (!result.error && result.data.user) {
         errEl.style.color = '#1D9E75';
         errEl.textContent = 'Account created! Check your email to confirm, then sign in.';
         toggleAuthMode();
       }
     } else {
-      result = await supabase.auth.signInWithPassword({ email, password });
+      result = await sb.auth.signInWithPassword({ email, password });
       if (!result.error) {
         currentSession = result.data.session;
         showDashboard();
@@ -1006,7 +1006,7 @@ async function handleAuth() {
 }
 
 async function handleLogout() {
-  await supabase.auth.signOut();
+  await sb.auth.signOut();
   currentSession = null;
   document.getElementById('loginWrap').classList.add('active');
   document.getElementById('loginEmail').value = '';
@@ -1033,7 +1033,7 @@ function renderAll() { renderMetrics(); renderEquity(); renderCal(); }
 
 // Check if already logged in (saved session in browser)
 (async () => {
-  const { data } = await supabase.auth.getSession();
+  const { data } = await sb.auth.getSession();
   if (data.session) {
     currentSession = data.session;
     showDashboard();
