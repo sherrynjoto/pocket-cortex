@@ -1102,8 +1102,10 @@ async function doSignIn() {
 
 // ── ROUTE USER after login ──
 async function routeUser(user) {
+  console.log("routeUser email:", user.email, "| admin:", ADMIN_EMAIL, "| match:", user.email===ADMIN_EMAIL);
   if (user.email === ADMIN_EMAIL) { showScreen('screenAdmin'); loadAdminPanel(); return; }
-  // Get profile
+  // Get profile — skip for admin
+  if (user.email === ADMIN_EMAIL) { showScreen('screenAdmin'); loadAdminPanel(); return; }
   const { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
   if (!profile || !profile.vantage_account) { showScreen('screenSignup'); return; }
   if (profile.vantage_status === 'approved') { showScreen('screenDashboard'); loadTrades(); return; }
