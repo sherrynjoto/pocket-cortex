@@ -424,6 +424,10 @@ input:focus,select:focus{border-color:#1D9E75}
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
       Payouts
     </div>
+    <div class="nav-item" id="adminNavItem" onclick="showPage('admin',this)" style="display:none;border-top:1px solid #1a1a1a;margin-top:8px;padding-top:12px">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Admin
+    </div>
   </div>
 
   <!-- DASHBOARD PAGE -->
@@ -503,6 +507,23 @@ input:focus,select:focus{border-color:#1D9E75}
       <div style="font-size:13px;color:#555;margin-bottom:4px">All deposits and withdrawals from your trading account</div>
     </div>
     <div class="payout-list" id="payoutList"></div>
+  </div>
+
+  <!-- ADMIN PAGE -->
+  <div class="page" id="page-admin">
+    <div id="adminStats2" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px"></div>
+    <div style="background:#111;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden">
+      <div style="padding:16px 20px;border-bottom:1px solid #1a1a1a;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:13px;font-weight:600;color:#e8e8e8">Members</div>
+        <div style="display:flex;gap:8px" id="adminFilterBtns2">
+          <button class="tab active" onclick="filterAdmin2('all',this)">All</button>
+          <button class="tab" onclick="filterAdmin2('pending',this)">Pending</button>
+          <button class="tab" onclick="filterAdmin2('approved',this)">Approved</button>
+          <button class="tab" onclick="filterAdmin2('rejected',this)">Rejected</button>
+        </div>
+      </div>
+      <div id="adminTable2" style="overflow-x:auto"></div>
+    </div>
   </div>
 
   <!-- DETAIL PANEL -->
@@ -866,6 +887,7 @@ function showPage(id, el) {
   el.classList.add('active');
   closeDetail();
   if(id==='performance') renderPerformance();
+  if(id==='admin') loadAdminPanel2();
   if(id==='calendar') renderCal2();
   if(id==='payouts') renderPayouts();
 }
@@ -1103,9 +1125,14 @@ async function doSignIn() {
 // ── ROUTE USER after login ──
 async function routeUser(user) {
   console.log("routeUser email:", user.email, "| admin:", ADMIN_EMAIL, "| match:", user.email===ADMIN_EMAIL);
-  if (user.email === ADMIN_EMAIL) { showScreen('screenAdmin'); loadAdminPanel(); return; }
-  // Get profile — skip for admin
-  if (user.email === ADMIN_EMAIL) { showScreen('screenAdmin'); loadAdminPanel(); return; }
+  if (user.email === ADMIN_EMAIL) {
+    showScreen('screenDashboard');
+    document.getElementById('adminNavItem').style.display = 'flex';
+    loadTrades();
+    loadAdminPanel2();
+    return;
+  }
+  // Get profile
   const { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
   if (!profile || !profile.vantage_account) { showScreen('screenSignup'); return; }
   if (profile.vantage_status === 'approved') { showScreen('screenDashboard'); loadTrades(); return; }
@@ -1253,6 +1280,67 @@ function renderAdminTable(filter) {
         </tr>`;
       }).join('')}</tbody>
     </table>`;
+}
+
+async function loadAdminPanel2() {
+  const { data: users } = await sb.from('profiles').select('*').order('created_at', { ascending: false });
+  allAdminUsers = users || [];
+  renderAdminStats2();
+  renderAdminTable2('all');
+}
+
+function renderAdminStats2() {
+  const total = allAdminUsers.length;
+  const pending = allAdminUsers.filter(u=>u.vantage_status==='pending').length;
+  const approved = allAdminUsers.filter(u=>u.vantage_status==='approved').length;
+  const rejected = allAdminUsers.filter(u=>u.vantage_status==='rejected').length;
+  const el = document.getElementById('adminStats2');
+  if (!el) return;
+  el.innerHTML = [
+    ['Total Members', total, '#e8e8e8'],
+    ['Pending', pending, '#f59e0b'],
+    ['Approved', approved, '#1D9E75'],
+    ['Rejected', rejected, '#ef4444'],
+  ].map(([l,v,c])=>`<div style="background:#0a0a0a;border:1px solid #1a1a1a;border-radius:12px;padding:16px"><div style="font-size:10px;color:#444;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">${l}</div><div style="font-size:28px;font-weight:700;color:${c}">${v}</div></div>`).join('');
+}
+
+function filterAdmin2(status, el) {
+  document.querySelectorAll('#adminFilterBtns2 .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderAdminTable2(status);
+}
+
+function renderAdminTable2(filter) {
+  const users = filter === 'all' ? allAdminUsers : allAdminUsers.filter(u=>u.vantage_status===filter);
+  const el = document.getElementById('adminTable2');
+  if (!el) return;
+  if (!users.length) { el.innerHTML = '<div style="padding:40px;text-align:center;color:#333">No users found</div>'; return; }
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse">
+    <thead><tr style="border-bottom:1px solid #1a1a1a">
+      <th style="padding:12px 16px;text-align:left;font-size:10px;color:#444;text-transform:uppercase">Name</th>
+      <th style="padding:12px 16px;text-align:left;font-size:10px;color:#444;text-transform:uppercase">Email</th>
+      <th style="padding:12px 16px;text-align:left;font-size:10px;color:#444;text-transform:uppercase">Phone</th>
+      <th style="padding:12px 16px;text-align:left;font-size:10px;color:#444;text-transform:uppercase">Vantage Acct</th>
+      <th style="padding:12px 16px;text-align:left;font-size:10px;color:#444;text-transform:uppercase">Status</th>
+      <th style="padding:12px 16px;text-align:left;font-size:10px;color:#444;text-transform:uppercase">Joined</th>
+      <th style="padding:12px 16px;text-align:left;font-size:10px;color:#444;text-transform:uppercase">Action</th>
+    </tr></thead>
+    <tbody>${users.map(u=>{
+      const sc = u.vantage_status==='approved'?'#1D9E75':u.vantage_status==='rejected'?'#ef4444':'#f59e0b';
+      const joined = u.created_at ? new Date(u.created_at).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'}) : '-';
+      return `<tr style="border-bottom:1px solid #111">
+        <td style="padding:12px 16px;font-size:13px;color:#e8e8e8;font-weight:500">${u.name||'-'}</td>
+        <td style="padding:12px 16px;font-size:12px;color:#888">${u.email||'-'}</td>
+        <td style="padding:12px 16px;font-size:12px;color:#888">${u.phone||'-'}</td>
+        <td style="padding:12px 16px;font-size:12px;color:#888;font-family:monospace">${u.vantage_account||'-'}</td>
+        <td style="padding:12px 16px"><span style="font-size:11px;font-weight:600;color:${sc};background:${sc}22;padding:3px 10px;border-radius:20px;text-transform:capitalize">${u.vantage_status||'pending'}</span></td>
+        <td style="padding:12px 16px;font-size:12px;color:#555">${joined}</td>
+        <td style="padding:12px 16px">
+          ${u.vantage_status!=='approved'?`<button onclick="updateStatus('${u.id}','approved')" style="background:#1D9E75;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer;margin-right:4px">Approve</button>`:''}
+          ${u.vantage_status!=='rejected'?`<button onclick="updateStatus('${u.id}','rejected')" style="background:#ef444422;color:#ef4444;border:1px solid #ef444444;border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer">Reject</button>`:''}
+        </td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
 }
 
 async function updateStatus(userId, status) {
