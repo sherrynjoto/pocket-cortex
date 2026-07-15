@@ -273,8 +273,6 @@ input:focus,select:focus{border-color:#1D9E75}
 .vantage-link{display:block;background:#1D9E75;color:#fff;text-align:center;padding:10px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;margin-top:12px}
 .vantage-link:hover{background:#17856a}
 /* screenDashboard wraps topnav+layout */
-#screenDashboard{display:none}
-#screenDashboard.active{display:block}
 </style>
 </head>
 <body>
@@ -371,27 +369,7 @@ input:focus,select:focus{border-color:#1D9E75}
   </div>
 </div>
 
-<div id="screenAdmin" class="screen">
-  <div style="padding:24px;max-width:1000px;margin:0 auto">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
-      <div><div class="auth-logo" style="font-size:20px">Pocket <span>Cortex</span></div><div style="font-size:12px;color:#444;margin-top:2px">Admin Panel</div></div>
-      <button class="auth-btn" onclick="handleLogout()" style="background:#1a1a1a;border:1px solid #222;width:auto;padding:8px 16px">Sign Out</button>
-    </div>
-    <div id="adminStats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px"></div>
-    <div style="background:#111;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden">
-      <div style="padding:16px 20px;border-bottom:1px solid #1a1a1a;display:flex;justify-content:space-between;align-items:center">
-        <div style="font-size:13px;font-weight:600;color:#e8e8e8">Members</div>
-        <div style="display:flex;gap:8px" id="adminFilterBtns">
-          <button class="tab active" onclick="filterAdmin('all',this)">All</button>
-          <button class="tab" onclick="filterAdmin('pending',this)">Pending</button>
-          <button class="tab" onclick="filterAdmin('approved',this)">Approved</button>
-          <button class="tab" onclick="filterAdmin('rejected',this)">Rejected</button>
-        </div>
-      </div>
-      <div id="adminTable" style="overflow-x:auto"></div>
-    </div>
-  </div>
-</div>
+
 
 <div id="screenDashboard" class="screen">
 <div class="topnav">
@@ -1102,7 +1080,9 @@ let vantageChoice = true; // true = has vantage, false = needs to open
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
+  const el = document.getElementById(id);
+  if (el) { el.classList.add('active'); }
+  else { console.error('showScreen: element not found:', id); }
 }
 
 // ── SIGN IN ──
