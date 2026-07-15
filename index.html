@@ -1126,14 +1126,22 @@ async function doSignIn() {
 async function routeUser(user) {
   console.log("routeUser email:", user.email, "| admin:", ADMIN_EMAIL, "| match:", user.email===ADMIN_EMAIL);
   if (user.email === ADMIN_EMAIL) {
+    console.log("IS ADMIN - showing dashboard");
     showScreen('screenDashboard');
-    document.getElementById('adminNavItem').style.display = 'flex';
+    const adminNav = document.getElementById('adminNavItem');
+    if (adminNav) adminNav.style.display = 'flex';
+    else console.log("adminNavItem NOT FOUND");
     loadTrades();
     loadAdminPanel2();
     return;
   }
   // Get profile
-  const { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
+  let profile = null;
+  try {
+    const { data } = await sb.from('profiles').select('*').eq('id', user.id).single();
+    profile = data;
+  } catch(e) { console.log('profile fetch error:', e); }
+  console.log("profile:", profile);
   if (!profile || !profile.vantage_account) { showScreen('screenSignup'); return; }
   if (profile.vantage_status === 'approved') { showScreen('screenDashboard'); loadTrades(); return; }
   if (profile.vantage_status === 'rejected') { showScreen('screenRejected'); return; }
